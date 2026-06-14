@@ -1,12 +1,15 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { detectPitch } from '../service/PitchDetection';
 
 export default function Bar() {
+    const pitchRef = useRef<HTMLSpanElement>(null);
 
     useEffect(() => {
         // 音程バーの初期化や更新のロジックをここに記述
         let ignore = false;  // ← フラグ追加
         let stream: MediaStream | null = null;
         let request: number;
+        
         const audioContext = new AudioContext();
         
 
@@ -40,8 +43,8 @@ export default function Bar() {
             analyser.fftSize = 2048;
 
             const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            analyser.getByteTimeDomainData(dataArray);
+            const dataArray = new Float32Array(bufferLength);
+            analyser.getFloatTimeDomainData(dataArray);
 
             // Connect the source to be analysed
             source.connect(analyser);
@@ -53,7 +56,7 @@ export default function Bar() {
             function draw() {
               request = requestAnimationFrame(draw);
             
-              analyser.getByteTimeDomainData(dataArray);
+              analyser.getFloatTimeDomainData(dataArray);
             
               canvasCtx.fillStyle = "rgb(200, 200, 200)";
               canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -67,7 +70,7 @@ export default function Bar() {
               let x = 0;
             
               for (let i = 0; i < bufferLength; i++) {
-                const v = dataArray[i] / 128.0;
+                const v = dataArray[i] + 1.0; // [-1, 1] の範囲を [0, 2] に変換
                 const y = (v * canvas.height) / 2;
             
                 if (i === 0) {
@@ -81,6 +84,12 @@ export default function Bar() {
           
               canvasCtx.lineTo(canvas.width, canvas.height / 2);
               canvasCtx.stroke();
+              const hz = detectPitch(dataArray, audioContext.sampleRate);
+              if (pitchRef.current && hz > 0) {
+                pitchRef.current.textContent = hz.toFixed(1) + " Hz";
+              } else {
+                pitchRef.current!.textContent = "音程: -- Hz";
+              }
             }
             draw();
           }
@@ -107,6 +116,7 @@ export default function Bar() {
         <div className="bar">
             ここで音程バーを表示する予定
             <canvas id="canvas" width="400" height="100"></canvas>
+            <span ref={pitchRef}>音程: -- Hz</span>
         </div>
     )
 }
